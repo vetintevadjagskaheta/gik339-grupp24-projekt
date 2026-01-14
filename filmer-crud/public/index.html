@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Filmer CRUD</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+</head>
+<body class="bg-light">
+
+<div class="container py-4">
+  <h1 class="mb-4">Filmer CRUD</h1>
+
+  <form id="filmForm" class="mb-4" novalidate>
+    <input type="hidden" id="filmId" />
+    <div class="mb-3">
+      <label for="titel" class="form-label">Titel</label>
+      <input type="text" class="form-control" id="titel" required />
+    </div>
+    <div class="mb-3">
+      <label for="år" class="form-label">År</label>
+      <input type="number" class="form-control" id="år" />
+    </div>
+    <div class="mb-3">
+      <label for="genre" class="form-label">Genre</label>
+      <input type="text" class="form-control" id="genre" required />
+    </div>
+    <div class="mb-3">
+      <label for="betyg" class="form-label">Betyg (1-10)</label>
+      <input type="number" class="form-control" id="betyg" min="1" max="10" required />
+    </div>
+    <button type="submit" class="btn btn-primary">Spara</button>
+    <button type="button" id="rensaBtn" class="btn btn-secondary ms-2">Rensa</button>
+  </form>
+
+  <div id="meddelande" class="alert d-none"></div>
+
+  <div id="filmerList" class="row g-3"></div>
+</div>
+
+<script>
+  const filmForm = document.getElementById('filmForm');
+  const filmerList = document.getElementById('filmerList');
+  const meddelande = document.getElementById('meddelande');
+  const rensaBtn = document.getElementById('rensaBtn');
+
+  // Variabler från formulärfälten
+  const filmIdField = document.getElementById('filmId');
+  const titelField = document.getElementById('titel');
+  const årField = document.getElementById('år');
+  const genreField = document.getElementById('genre');
+  const betygField = document.getElementById('betyg');
+
+  function visaMeddelande(text, typ = 'success') {
+    meddelande.textContent = text;
+    meddelande.className = 'alert alert-' + typ;
+    meddelande.classList.remove('d-none');
+    setTimeout(() => meddelande.classList.add('d-none'), 3000);
+  }
+
+  async function hamtaFilmer() {
+    try {
+      const res = await fetch('/filmer');
+      if (!res.ok) throw new Error('Fel vid hämtning av filmer');
+      const data = await res.json();
+
+      filmerList.innerHTML = '';
+      data.forEach(film => {
+        const card = document.createElement('div');
+        card.className = 'col-md-4';
+        card.innerHTML = `
+          <div class="card h-100">
+            <div class="card-body">
+              <h5 class="card-title">${film.titel}</h5>
+              <p class="card-text">År: ${film.år ?? '-'}</p>
+              <p class="card-text">Genre: ${film.genre ?? '-'}</p>
+              <p class="card-text">Betyg: ${film.betyg ?? '-'}</p>
+              <button class="btn btn-sm btn-warning me-2" onclick="editFilm(${film.id})">Redigera</button>
+              <button class="btn btn-sm btn-danger" onclick="taBortFilm(${film.id})">Ta bort</button>
+            </div>
+          </div>
+        `;
+        filmerList.appendChild(card);
+      });
+    } catch (e) {
+      visaMeddelande(e.message, 'danger');
+    }
+  }
+
+  async function editFilm(id) {
+    try {
+      const res = await fetch('/filmer/' + id);
+      if (!res.ok) throw new Error('Kunde inte hämta filmen');
+      const film = await res.json();
+
+      filmIdField.value = film.id;
+      titelField.value = film.titel;
+      årField.value = film.år || '';
+      genreField.value = film.genre || '';
+      betygField.value = film.betyg || '';
+    } catch (e) {
+      visaMeddelande(e.message, 'danger');
+    }
+  }
+
+  async function taBortFilm(id) {
+    if (!confirm('Vill du ta bort denna film?')) return;
+    try {
+      const res = await fetch('/filmer/' + id, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Fel vid borttagning');
+      visaMeddelande(data.message);
+      hamtaFilmer();
+      rensaForm();
+    } catch (e) {
+      visaMeddelande(e.message, 'danger');
+    }
+  }
+
+  function rensaForm() {
+    filmForm.reset();
+    filmIdField.value = '';
+  }
+
+  filmForm.addEventListener('submit', async e => {
+    e.preventDefault();
+
+    // Hämta värden från variabler
+    const id = filmIdField.value;
+    const titel = titelField.value.trim();
+    const år = årField.value ? parseInt(årField.value) : null;
+    const genre = genreField.value.trim();
+    const betyg = betygField.value ? parseInt(betygField.value) : null;
+
+    // Enkel frontend-validering
+    if (betyg === null || betyg < 1 || betyg > 10) {
+      visaMeddelande('Betyg måste vara mellan 1 och 10', 'danger');
+      return;
+    }
+    if (!titel || !genre) {
+      visaMeddelande('Titel och genre måste fyllas i', 'danger');
+      return;
+    }
+
+    const filmData = { titel, år, genre, betyg };
+
+    try {
+      let res, data;
+      if (id) {
+        filmData.id = parseInt(id);
+        res = await fetch('/filmer', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(filmData),
+        });
+      } else {
+        res = await fetch('/filmer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(filmData),
+        });
+      }
+      data = await res.json();
+
+      if (!res.ok) throw new Error(data.message || 'Fel vid sparande');
+      visaMeddelande(data.message);
+      hamtaFilmer();
+      rensaForm();
+    } catch (e) {
+      visaMeddelande(e.message, 'danger');
+    }
+  });
+
+  rensaBtn.addEventListener('click', rensaForm);
+
+  // Ladda filmer vid start
+  hamtaFilmer();
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
